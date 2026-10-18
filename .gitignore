@@ -1,0 +1,7 @@
+.env
+.env.*
+!.env.example
+.venv/
+__pycache__/
+.vercel
+geo_report_*_draft.md
