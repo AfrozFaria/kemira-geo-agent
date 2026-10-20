@@ -7,15 +7,15 @@ from bs4 import BeautifulSoup
 from dotenv import load_dotenv
 from openai import OpenAI
 
-load_dotenv()   # reads OPENAI_API_KEY from the .env file
+load_dotenv()   
 
 client = OpenAI()
-MODEL = "gpt-4o-mini"          # agent model; try a stronger one from the OpenAI docs
-REVIEW_MODEL = "gpt-4o-mini"   # reviewer model; a stronger model helps most here
+MODEL = "gpt-4o-mini"          
+REVIEW_MODEL = "gpt-4o-mini"  
 MAX_STEPS = 25
 MIN_PAGES = 3
 MAX_LINKS_SHOWN = 60
-ALLOWED_DOMAIN = "kemira.com"          # guardrail: only this site can be fetched
+ALLOWED_DOMAIN = "kemira.com"          
 START_URL = "https://www.kemira.com"
 SKIP_EXTENSIONS = (".pdf", ".jpg", ".jpeg", ".png", ".gif", ".svg", ".webp",
                    ".zip", ".xlsx", ".docx", ".pptx", ".mp4")
@@ -25,10 +25,10 @@ def normalize(url: str) -> str:
     return urldefrag(url)[0].rstrip("/")
 
 
-inspected_urls = set()                  # pages actually inspected (after redirects)
-allowed_urls = {normalize(START_URL)}   # guardrail: homepage + links seen on pages
-assistant_answers = []                  # evidence for the reviewer
-page_evidence = []                      # evidence for the reviewer
+inspected_urls = set()                  
+allowed_urls = {normalize(START_URL)}   
+assistant_answers = []               
+page_evidence = []                 
 
 
 def on_allowed_domain(url: str) -> bool:
@@ -47,10 +47,9 @@ def useful_link(url: str) -> bool:
 def link_rank(url: str):
     path = urlparse(url).path.strip("/")
     depth = len(path.split("/")) if path else 0
-    return (depth, url)   # shallow pages (main sections) first
+    return (depth, url)  
 
 
-# ---------- Tools ----------
 def ask_ai_assistant(question: str) -> dict:
     r = client.chat.completions.create(
         model=MODEL,
@@ -89,7 +88,7 @@ def inspect_page(url: str) -> dict:
 
     soup = BeautifulSoup(r.text, "html.parser")
 
-    # Structured data (JSON-LD), including nested @graph entries
+    
     schema_types, ld_blocks = [], 0
     for s in soup.find_all("script", type="application/ld+json"):
         ld_blocks += 1
@@ -102,14 +101,13 @@ def inspect_page(url: str) -> dict:
 
     meta = soup.find("meta", attrs={"name": "description"})
 
-    # Links (collected before removing tags). All are allowed; the main ones are shown.
     all_links = {normalize(urljoin(r.url, a["href"]))
                  for a in soup.find_all("a", href=True)}
     all_links = {l for l in all_links if useful_link(l)}
     allowed_urls.update(all_links)
     links = sorted(all_links, key=link_rank)[:MAX_LINKS_SHOWN]
 
-    # Remove scripts/styles so text checks only see visible content
+
     for tag in soup(["script", "style", "noscript"]):
         tag.decompose()
     text = soup.get_text(" ", strip=True)
@@ -124,7 +122,7 @@ def inspect_page(url: str) -> dict:
     }
 
     final_url = normalize(r.url)
-    inspected_urls.add(final_url)   # a redirect counts as the page it lands on
+    inspected_urls.add(final_url)   
     word_count = len(text.split())
     h1 = [h.get_text(strip=True) for h in soup.find_all("h1")][:3]
     h2 = [h.get_text(strip=True) for h in soup.find_all("h2")][:10]
@@ -147,7 +145,7 @@ def inspect_page(url: str) -> dict:
         "note": ("Very little visible text: the page may be rendered with "
                  "JavaScript, so findings may be incomplete.") if word_count < 150 else "",
         "links_found": len(all_links),
-        "links": links,                 # before the excerpt, so truncation cuts the excerpt
+        "links": links,                
         "text_excerpt": text[:1000],
     }
 
@@ -180,7 +178,7 @@ TOOLS = [
                        "required": ["url"]}}},
 ]
 
-# Reference facts. Verify against kemira.com and extend before relying on them.
+
 FACTS = """
 Reference facts (from Kemira's public information; verify and extend).
 This list is NOT exhaustive: anything not listed here is "not confirmed".
@@ -270,7 +268,6 @@ def review(draft: str) -> str:
     return r.choices[0].message.content
 
 
-# ---------- Agent loop ----------
 messages = [
     {"role": "system", "content": SYSTEM},
     {"role": "user", "content": "Run the Kemira GEO audit now."},
@@ -312,7 +309,6 @@ for step in range(MAX_STEPS):
 else:
     print("Stopped: reached the step limit without a final report.")
 
-# ---------- Review pass and saving ----------
 if draft_report:
     print("\n[review] Fact-checking the draft against the collected evidence...")
     final_report = review(draft_report)
